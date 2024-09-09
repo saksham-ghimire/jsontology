@@ -59,3 +59,13 @@ countHandler := &CountEventHandler{
 rule := NewRule(ruleCondition, map[string]interface{}{}, countHandler)
 
 ```
+
+### Enabling JSON Parser for custom event handler
+
+```go
+// key found in json and function to parse json/map[string]interface to eventHandler object
+RegisterEventHandlerParser("MockEventHandler", func(params map[string]interface{}) (eventHandler, error) {
+				return handlerMock, nil
+			})
+
+```

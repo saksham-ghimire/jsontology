@@ -1,7 +1,8 @@
 package jsontology
 
 import (
-	"strings"
+	"encoding/json"
+	"io"
 )
 
 type Rule struct {
@@ -21,68 +22,69 @@ type Rule struct {
 // onMatch: An event handler function that will be called when the rule matches.
 //
 // Returns a pointer to a new Rule instance.
-func NewRule(conditions []map[string]interface{}, params map[string]interface{}, onMatch eventHandler) *Rule {
+func NewRule(conditions io.Reader, params map[string]interface{}, onMatch eventHandler) (*Rule, error) {
 
-	processedConditions := parseJsonToContext(conditions)
+	var parsedConditions []map[string]interface{}
+
+	conditionBytes, err := io.ReadAll(conditions)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(conditionBytes, &parsedConditions); err != nil {
+		return nil, err
+	}
+
+	processedConditions, err := parseJsonToContext(parsedConditions)
+	if err != nil {
+		return nil, err
+	}
 	return &Rule{
 		condition:  processedConditions,
 		onMatch:    onMatch,
 		extraParam: params,
-	}
+	}, nil
 }
 
-func parseJsonToContext(data []map[string]interface{}) [][]constraint {
-
-	var returnContext [][]constraint
-	for _, eachData := range data {
-		// prepare internal constraint var which will hold internal array in 2d array on returnContext
-		var internalContext []constraint
-		for key, value := range eachData {
-			splittedString := strings.Split(key, ".$") // separator
-			field, operator := splittedString[0], splittedString[1]
-			if operator == "nested" {
-				// nested operator should always have map[string]interface{} as comparison type
-				formattedValue, ok := value.(map[string]interface{})
-				if !ok {
-					panic(ok)
-				}
-				sformattedValue := []map[string]interface{}{formattedValue}
-				internalContext = append(internalContext, nestedCriteria{
-					path:       field,
-					conditions: parseJsonToContext(sformattedValue)[0],
-				})
-			} else {
-				internalContext = append(internalContext, criteria{
-					field:    field,
-					operator: Operator(operator),
-					value:    value,
-				})
-			}
-		}
-		returnContext = append(returnContext, internalContext)
-	}
-	return returnContext
-}
-
+// IsMatch checks if the provided data meets the rule's conditions.
+//
+// The `data` is first normalized and merged with itself for evaluation. Note that when JSON is unmarshalled
+// into a map in Go, numeric fields like `{"a": 4}` may be represented as `float64` instead of `int`.
+// Be mindful of this when passing data parsed from JSON to ensure compatibility.
+//
+// Parameters:
+// - data: A map representing the input data to be checked.
+//
+// Returns:
+// - bool: true if the data matches the conditions, false otherwise.
 func (r *Rule) IsMatch(data map[string]interface{}) bool {
 
 	var normalizedJson = transformJSON(data, "")
 	normalizedJson = concatMaps(data, normalizedJson)
-	or_matches := []bool{}
+	orMatches := []bool{}
 	for _, e := range r.condition {
 
-		and_matches := []bool{}
+		andMatches := []bool{}
 		for _, eachContext := range e {
-			and_matches = append(and_matches, eachContext.Evaluate(normalizedJson))
+			andMatches = append(andMatches, eachContext.Evaluate(normalizedJson))
 		}
-		or_matches = append(or_matches, all_match(and_matches))
+		orMatches = append(orMatches, allMatch(andMatches))
 	}
-	return any_match(or_matches)
+	return anyMatch(orMatches)
 
 }
 
-func (r *Rule) Send(data map[string]interface{}) {
-	if r.IsMatch(data) {
-		r.onMatch.call(data, r.extraParam)
+func (r *Rule) Send(data io.Reader) error {
+	var parsedData map[string]interface{}
+
+	dataBytes, err := io.ReadAll(data)
+	if err != nil {
+		return err
 	}
+	if err := json.Unmarshal(dataBytes, &parsedData); err != nil {
+		return err
+	}
+	if isMatch := r.IsMatch(parsedData); isMatch {
+		r.onMatch.call(parsedData, r.extraParam)
+	}
+	return nil
 }

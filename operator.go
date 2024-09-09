@@ -1,27 +1,59 @@
 package jsontology
 
 import (
+	"net"
 	"reflect"
+	"regexp"
+	"strings"
 )
 
 type Operator string
+type OperatorFunc func(ruleValue interface{}, fieldValue interface{}) bool
+type OperatorTypeHandlerFunc func(value interface{}) (interface{}, error)
 
 const (
-	equals      Operator = "eq"
-	notEquals   Operator = "neq"
-	greaterThan Operator = "gt"
-	lessThan    Operator = "lt"
+	equals        Operator = "eq"
+	notEquals     Operator = "neq"
+	greaterThan   Operator = "gt"
+	lessThan      Operator = "lt"
+	startsWith    Operator = "sw"
+	endsWith      Operator = "ew"
+	regexMatch    Operator = "rgx"
+	notRegexMatch Operator = "nrgx"
+	nested        Operator = "nested"
+	ipInRange     Operator = "ipInRange"
 )
 
-var operatorMapping map[Operator]func(ruleValue interface{}, fieldValue interface{}) bool = map[Operator]func(ruleValue interface{}, fieldValue interface{}) bool{
-	equals:      isEquals,
-	notEquals:   isNotEquals,
-	greaterThan: isGreaterThan,
-	lessThan:    isLessThan,
+var operatorFuncMapping map[Operator]OperatorFunc = map[Operator]OperatorFunc{
+	equals:        isEquals,
+	notEquals:     isNotEquals,
+	greaterThan:   isGreaterThan,
+	lessThan:      isLessThan,
+	startsWith:    isStartingWith,
+	endsWith:      isEndingWith,
+	regexMatch:    isRegexMatch,
+	notRegexMatch: isNotRegexMatch,
+	ipInRange:     isIPInRange,
 }
 
-func RegisterNewOperator(op Operator, opFunc func(ruleValue interface{}, fieldValue interface{}) bool) {
-	operatorMapping[op] = opFunc
+var operatorTypeHandlerMapping map[Operator]OperatorTypeHandlerFunc = map[Operator]OperatorTypeHandlerFunc{
+	greaterThan:   isNumber,
+	lessThan:      isNumber,
+	regexMatch:    asRegexExpression,
+	notRegexMatch: asRegexExpression,
+	ipInRange:     asIpNet,
+}
+
+// RegisterNewOperator registers a new operator with the system.
+//
+// The `op` parameter specifies the operator to be registered.
+// The `opFunc` parameter is the function that will be called when the operator is executed.
+// The `opTypeHandler` parameter is an optional function that can be used to pre-process data per operator's type.
+func RegisterNewOperator(op Operator, opFunc OperatorFunc, opTypeHandler OperatorTypeHandlerFunc) {
+	operatorFuncMapping[op] = opFunc
+	if opTypeHandler != nil {
+		operatorTypeHandlerMapping[op] = opTypeHandler
+	}
 }
 
 func isEquals(ruleParam, eventParam interface{}) bool {
@@ -75,7 +107,7 @@ func isEquals(ruleParam, eventParam interface{}) bool {
 	// if type is not equal only one fallback is supported
 	switch eventParam := eventParam.(type) {
 	case []interface{}:
-		return existsInArray(ruleParam, eventParam)
+		return isInArray(ruleParam, eventParam)
 	}
 
 	return false
@@ -106,8 +138,8 @@ func isGreaterThan(ruleParam, eventParam interface{}) bool {
 	}
 	switch eventParam := eventParam.(type) {
 	case []interface{}:
-		for _, each_element := range eventParam {
-			if isGreaterThan(ruleParam, each_element) {
+		for _, eachElement := range eventParam {
+			if isGreaterThan(ruleParam, eachElement) {
 				return true
 			}
 		}
@@ -136,8 +168,8 @@ func isLessThan(ruleParam, eventParam interface{}) bool {
 	}
 	switch eventParam := eventParam.(type) {
 	case []interface{}:
-		for _, each_element := range eventParam {
-			if isLessThan(ruleParam, each_element) {
+		for _, eachElement := range eventParam {
+			if isLessThan(ruleParam, eachElement) {
 				return true
 			}
 		}
@@ -146,11 +178,66 @@ func isLessThan(ruleParam, eventParam interface{}) bool {
 	return false
 }
 
-func existsInArray(value interface{}, array []interface{}) bool {
+func isInArray(value interface{}, array []interface{}) bool {
 	for _, element := range array {
 		if isEquals(value, element) {
 			return true
 		}
+	}
+	return false
+}
+
+func isStartingWith(ruleParam, eventParam interface{}) bool {
+	v1 := reflect.ValueOf(ruleParam)
+	v2 := reflect.ValueOf(eventParam)
+	if v1.Kind() == v2.Kind() {
+		switch v1.Kind() {
+		case reflect.String:
+			return strings.HasPrefix(v2.String(), v1.String())
+		}
+	}
+	return false
+}
+
+func isEndingWith(ruleParam, eventParam interface{}) bool {
+	v1 := reflect.ValueOf(ruleParam)
+	v2 := reflect.ValueOf(eventParam)
+	if v1.Kind() == v2.Kind() {
+		switch v1.Kind() {
+		case reflect.String:
+			return strings.HasSuffix(v2.String(), v1.String())
+		}
+	}
+	return false
+}
+
+func isRegexMatch(ruleParam, eventParam interface{}) bool {
+	v1 := reflect.ValueOf(ruleParam)
+	v2 := reflect.ValueOf(eventParam)
+	if v2.Kind() == reflect.String {
+		re := v1.Interface().(*regexp.Regexp)
+		text := v2.String()
+		return re.MatchString(text)
+	}
+	return false
+}
+
+func isNotRegexMatch(ruleParam, eventParam interface{}) bool {
+	return !isRegexMatch(ruleParam, eventParam)
+}
+
+func isIPInRange(ruleParam, eventParam interface{}) bool {
+
+	v2 := reflect.ValueOf(eventParam)
+	v1 := reflect.ValueOf(ruleParam)
+
+	if v2.Kind() == reflect.String {
+		ip := net.ParseIP(v2.String())
+		if ip == nil {
+			return false
+		}
+		subnetStr := v1.Interface().(*net.IPNet)
+		return subnetStr.Contains(ip)
 	}
 	return false
 }

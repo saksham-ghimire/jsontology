@@ -2,6 +2,7 @@ package jsontology
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -39,19 +40,9 @@ func TestCountEventHandler(t *testing.T) {
 			h := tt.handler.(*CountEventHandler).handler.(*eventHandlerMock)
 			h.On("call").Times(tt.matches)
 			h.On("call").Return(nil)
-			ruleCondition := []map[string]interface{}{}
-			err := json.Unmarshal([]byte(tt.condition), &ruleCondition)
-			if err != nil {
-				t.Fatal("Invalid data", err)
-			}
-			rule := NewRule(ruleCondition, map[string]interface{}{}, tt.handler)
+			rule, _ := NewRule(strings.NewReader(tt.condition), map[string]interface{}{}, tt.handler)
 			for _, eachJson := range tt.jsonEvents {
-				jsonData := map[string]interface{}{}
-				err = json.Unmarshal([]byte(eachJson), &jsonData)
-				if err != nil {
-					t.Fatal("Invalid data", err)
-				}
-				rule.Send(jsonData)
+				rule.Send(strings.NewReader(eachJson))
 			}
 			h.AssertExpectations(t)
 		})
@@ -93,18 +84,34 @@ func TestGroupByEventHandler(t *testing.T) {
 				t.Fatal("Invalid data", err)
 			}
 
-			rule := NewRule(ruleCondition, map[string]interface{}{}, tt.handler)
+			rule, _ := NewRule(strings.NewReader(tt.condition), map[string]interface{}{}, tt.handler)
 
 			for _, eachJson := range tt.jsonEvents {
-				jsonData := map[string]interface{}{}
-				err = json.Unmarshal([]byte(eachJson), &jsonData)
-				if err != nil {
-					t.Fatal("Invalid data", err)
-				}
-				rule.Send(jsonData)
+				rule.Send(strings.NewReader(eachJson))
 			}
 
 			h.AssertExpectations(t)
 		})
 	}
+}
+
+func TestParseEventHandlerChain(t *testing.T) {
+	table := []struct {
+		name              string
+		chainedExpression string
+	}{
+		{
+			name:              "simple chain parsing",
+			chainedExpression: `{"handler":{"type":"CountEventHandler","params":{"count":3,"handler":{"type":"LogEventHandler","params":{}}}}}`,
+		},
+	}
+	for _, tt := range table {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := GetEventHandlerChain(strings.NewReader(tt.chainedExpression))
+			if err != nil {
+				t.Fatal("unable to parse event handlers, received error", err)
+			}
+		})
+	}
+
 }

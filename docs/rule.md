@@ -65,3 +65,81 @@ To simplify a complex logical expression, follow these steps:
    - **Meaning:** `a and c` or `b and c` or `d`
    - **Expressed:** `[{"a.$":"", "c.$":""},{"b.$":"", "c.$":""},{"d,$":""}]`
 
+
+
+#### Examples
+
+* **Rule example** 
+
+```go
+
+func main() {
+   condition := `[{"a.a.$eq":1 , "g.$eq":"h"}]`
+   data := `{"a":[{"a":1},{"a":2}],"g":"h"}`
+   parsedData := make(map[string]interface{})
+   json.Unmarshal([]byte(data), &parsedData)
+   r, _ := jsontology.NewRule(strings.NewReader(condition), map[string]interface{}{}, &jsontology.LogEventHandler{
+      Logger: log.Default(),
+   })
+   // to verify is rule matches with data 
+   // Note that when JSON is unmarshalled 
+	// into a map in Go, numeric fields like `{"a": 4}` may be represented as `float64` instead of `int`. 
+	// Be mindful of this when passing data parsed from JSON to ensure compatibility. (Alternatively use Send)
+   fmt.Println(r.IsMatch(parsedData))
+   // to trigger the event chain in case of match
+   r.Send(strings.NewReader(data))
+}
+
+```
+
+* **Dealing with nested Json**
+
+```go
+func main() {
+	condition := `[{"a.$nested":{"a.$eq": 1, "b.$eq": 3}}]`
+	data := `{"a":[{"a":1},{"a":1, "b": 3}],"g":"h"}`
+	parsedData := make(map[string]interface{})
+	json.Unmarshal([]byte(data), &parsedData)
+	r, _ := jsontology.NewRule(strings.NewReader(condition), map[string]interface{}{}, &jsontology.LogEventHandler{
+		Logger: log.Default(),
+	})
+	// to verify is rule matches with data
+	fmt.Println(r.IsMatch(parsedData))
+	// to trigger the event chain in case of match
+	r.Send(strings.NewReader(data))
+}
+```
+
+* **Parse event handler chain from json**
+
+```go
+func main() {
+	eventHandlerChain := `{"handler":{"type":"CountEventHandler","params":{"count":3,"handler":{"type":"LogEventHandler","params":{}}}}}`
+	conditions := `[{"name.$eq": "someName"}]`
+	jsonEvents := []string{`{"name": "someName"}`, `{"name": "someName"}`, `{"name": "someName"}`, `{"name": "someName"}`}
+
+	eventHandler, err := jsontology.GetEventHandlerChain(strings.NewReader(eventHandlerChain))
+	if err != nil {
+		log.Fatalf("Unable to get rule handler error %v", err)
+	}
+
+	r, err := jsontology.NewRule(strings.NewReader(conditions), map[string]interface{}{"rule_id": 1}, eventHandler)
+
+	if err != nil {
+		log.Fatalf("Unable to get rule received error %v", err)
+	}
+	for _, eachEvent := range jsonEvents {
+		r.Send(strings.NewReader(eachEvent))
+	}
+}
+```
+
+**Output**
+
+```
+2024/09/15 20:55:29 Event Matched 
+ Event : map[name:someName] 
+ Rule Params : map[rule_id:1]
+```
+
+_Note : Pre configured eventhandlers are CountEventHandler, GroupByEventHandler, TimeBasedCountEventHandler, LogEventHandler ..._

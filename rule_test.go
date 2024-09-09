@@ -2,6 +2,7 @@ package jsontology
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -45,6 +46,13 @@ func TestRule(t *testing.T) {
 			data:      `{"a":[{"a":1},{"a":2}],"g":"h"}`,
 			expected:  true,
 		},
+
+		{
+			name:      "simple and logic with transformer operator",
+			condition: `[{"a.a.$gt":1, "g.$eq":"h"}]`,
+			data:      `{"a":[{"a":2},{"a":2}],"g":"h"}`,
+			expected:  true,
+		},
 	}
 
 	for _, tt := range table {
@@ -59,10 +67,51 @@ func TestRule(t *testing.T) {
 			if err != nil {
 				t.Fatal("Invalid JSON for rule", err)
 			}
-			r := NewRule(conditions, map[string]interface{}{}, &LogEventHandler{})
+			r, err := NewRule(strings.NewReader(tt.condition), map[string]interface{}{}, &LogEventHandler{})
+			if err != nil {
+				t.Fatal("unable to parse to rule, received error : ", err)
+			}
 			if got := r.IsMatch(data); got != tt.expected {
 				t.Errorf("IsMatch() = %v, want %v", got, tt.expected)
 			}
+		})
+	}
+}
+
+func TestRuleEventHandlerChaining(t *testing.T) {
+	table := []struct {
+		name              string
+		condition         string
+		data              string
+		eventHandlerChain string
+		expected          bool
+	}{
+		{
+			name:              "rule with event handling chain",
+			condition:         `[{"a.a.$eq":1,"c.$eq":"1"}]`,
+			data:              `{"a":[{"a":1},{"a":2}],"c":"1"}`,
+			eventHandlerChain: `{"handler":{"type":"CountEventHandler","params":{"count":1,"handler":{"type":"MockEventHandler","params":{}}}}}`,
+		},
+	}
+	for _, tt := range table {
+		t.Run(tt.name, func(t *testing.T) {
+
+			handlerMock := &eventHandlerMock{}
+			RegisterEventHandlerParser("MockEventHandler", func(params map[string]interface{}) (eventHandler, error) {
+				return handlerMock, nil
+			})
+			handlerMock.On("call").Times(1)
+			eventHandler, err := GetEventHandlerChain(strings.NewReader(tt.eventHandlerChain))
+			if err != nil {
+				t.Fatal("unable to parse event handler chain", err)
+			}
+			r, err := NewRule(strings.NewReader(tt.condition), map[string]interface{}{}, eventHandler)
+			if err != nil {
+				t.Fatal("unable to parse to rule, received error : ", err)
+			}
+			r.Send(strings.NewReader(tt.data))
+			handlerMock.AssertExpectations(t)
+
 		})
 	}
 }

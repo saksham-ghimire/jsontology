@@ -2,7 +2,7 @@ package jsontology
 
 import "strings"
 
-func all_match(slice []bool) bool {
+func allMatch(slice []bool) bool {
 	for _, v := range slice {
 		if !v {
 			return false
@@ -11,7 +11,7 @@ func all_match(slice []bool) bool {
 	return true
 }
 
-func any_match(slice []bool) bool {
+func anyMatch(slice []bool) bool {
 	for _, v := range slice {
 		if v {
 			return true
@@ -85,17 +85,17 @@ func transformJSON(data interface{}, currentPath string) map[string]interface{} 
 			result = concatMaps(result, transformJSON(value, key))
 		}
 	case []interface{}:
-		for _, each_value := range v {
-			switch each_value.(type) {
+		for _, eachValue := range v {
+			switch eachValue.(type) {
 			case map[string]interface{}:
-				result = concatMaps(result, transformJSON(each_value, currentPath))
+				result = concatMaps(result, transformJSON(eachValue, currentPath))
 			default:
 				if _, ok := result[currentPath]; ok {
 					d := result[currentPath].([]interface{})
-					result[currentPath] = append(d, each_value)
+					result[currentPath] = append(d, eachValue)
 				} else {
 					if strings.Contains(currentPath, ".") {
-						result[currentPath] = []interface{}{each_value}
+						result[currentPath] = []interface{}{eachValue}
 					}
 				}
 			}

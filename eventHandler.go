@@ -10,7 +10,7 @@ type eventHandler interface {
 }
 
 type LogEventHandler struct {
-	logger *log.Logger
+	Logger *log.Logger
 }
 
 type CountEventHandler struct {
@@ -58,7 +58,7 @@ func NewTimeBasedCountEventHandler(count int, timeLimit int, handler eventHandle
 }
 
 func (l *LogEventHandler) call(eventJson, extraParams map[string]interface{}) {
-	l.logger.Printf("Event Matched \n Event : %v \n Rule Params : %v", eventJson, extraParams)
+	l.Logger.Printf("Event Matched \n Event : %v \n Rule Params : %v", eventJson, extraParams)
 }
 
 func (c *CountEventHandler) call(eventJson, extraParams map[string]interface{}) {
@@ -76,7 +76,7 @@ func (c *GroupByEventHandler) call(eventJson, extraParams map[string]interface{}
 		if value == c.count {
 			c.handler.call(eventJson, extraParams)
 			// Reset the previous counter once handler is called
-			c.currentState[key] = 0
+			delete(c.currentState, key)
 		}
 	}
 }

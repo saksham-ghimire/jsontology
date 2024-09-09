@@ -22,9 +22,9 @@ type nestedCriteria struct {
 func (c criteria) Evaluate(data map[string]interface{}) bool {
 
 	if value, ok := data[c.field]; ok {
-		return operatorMapping[c.operator](c.value, value)
+		return operatorFuncMapping[c.operator](c.value, value)
 	}
-	return operatorMapping[c.operator](c.value, keyNotFound)
+	return operatorFuncMapping[c.operator](c.value, keyNotFound)
 }
 
 func (c nestedCriteria) Evaluate(data map[string]interface{}) bool {
@@ -34,11 +34,11 @@ func (c nestedCriteria) Evaluate(data map[string]interface{}) bool {
 	if ok {
 		for _, eachData := range arrayData {
 			if formattedData, ok := eachData.(map[string]interface{}); ok {
-				and_matches := []bool{}
+				andMatches := []bool{}
 				for _, e := range c.conditions {
-					and_matches = append(and_matches, e.Evaluate(formattedData))
+					andMatches = append(andMatches, e.Evaluate(formattedData))
 				}
-				if all_match(and_matches) {
+				if allMatch(andMatches) {
 					return true
 				}
 			}
